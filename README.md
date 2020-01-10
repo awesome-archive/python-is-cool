@@ -188,7 +188,7 @@ print(elems)
 
 If we want to insert 3 values `0.2, 0.3, 0.5` between element at index 0 and element at index 1:
 
-```pyhon
+```python
 elems = list(range(10))
 elems[1:1] = [0.2, 0.3, 0.5]
 print(elems)
@@ -320,8 +320,8 @@ class Node:
         self.value = value
         self.left = left
         self.right = right
-        
-    def __repr__(self):    
+
+    def __repr__(self):
         strings = [f'value: {self.value}']
         strings.append(f'left: {self.left.value}' if self.left else 'left: None')
         strings.append(f'right: {self.right.value}' if self.right else 'right: None')
@@ -343,13 +343,13 @@ class Node:
         self.value = value
         self.left = left
         self.right = right
-    
+
     def __eq__(self, other):
         return self.value == other.value
-    
+
     def __lt__(self, other):
         return self.value < other.value
-    
+
     def __ge__(self, other):
         return self.value >= other.value
 
@@ -437,29 +437,29 @@ print(model3.__dict__)
 Often, you run into this wild import `*` that looks something like this:
 
 `file.py`
-    
+```python
     from parts import *
+```
 
 This is irresponsible because it will import everything in module, even the imports of that module. For example, if `parts.py` looks like this:
 
 `parts.py`
-
 ```python
 import numpy
 import tensorflow
-    
+
 class Encoder:
     ...
-    
+
 class Decoder:
     ...
-        
+
 class Loss:
     ...
 
 def helper(*args, **kwargs):
     ...
-    
+
 def utils(*args, **kwargs):
     ...
 ```
@@ -469,12 +469,123 @@ Since `parts.py` doesn't have `__all__` specified, `file.py` will import Encoder
 If we intend that only Encoder, Decoder, and Loss are ever to be imported and used in another module, we should specify that in `parts.py` using the `__all__` keyword.
 
 `parts.py`
- ```python
+```python
  __all__ = ['Encoder', 'Decoder', 'Loss']
 import numpy
 import tensorflow
-    
+
 class Encoder:
     ...
 ```
 Now, if some user irresponsibly does a wild import with `parts`, they can only import Encoder, Decoder, Loss. Personally, I also find `__all__` helpful as it gives me an overview of the module.
+
+## 6. Decorator to time your functions
+It's often useful to know how long it takes a function to run, e.g. when you need to compare the performance of two algorithms that do the same thing. One naive way is to call `time.time()` at the begin and end of each function and print out the difference.
+
+For example: compare two algorithms to calculate the n-th Fibonacci number, one uses memoization and one doesn't.
+
+```python
+def fib_helper(n):
+    if n < 2:
+        return n
+    return fib_helper(n - 1) + fib_helper(n - 2)
+
+def fib(n):
+    """ fib is a wrapper function so that later we can change its behavior
+    at the top level without affecting the behavior at every recursion step.
+    """
+    return fib_helper(n)
+
+def fib_m_helper(n, computed):
+    if n in computed:
+        return computed[n]
+    computed[n] = fib_m_helper(n - 1, computed) + fib_m_helper(n - 2, computed)
+    return computed[n]
+
+def fib_m(n):
+    return fib_m_helper(n, {0: 0, 1: 1})
+```
+
+Let's make sure that `fib` and `fib_m` are functionally equivalent.
+
+```python
+for n in range(20):
+    assert fib(n) == fib_m(n)
+```
+
+```python
+import time
+
+start = time.time()
+fib(30)
+print(f'Without memoization, it takes {time.time() - start:7f} seconds.')
+
+==> Without memoization, it takes 0.267569 seconds.
+
+start = time.time()
+fib_m(30)
+print(f'With memoization, it takes {time.time() - start:.7f} seconds.')
+
+==> With memoization, it takes 0.0000713 seconds.
+```
+
+If you want to time multiple functions, it can be a drag having to write the same code over and over again. It'd be nice to have a way to specify how to change any function in the same way. In this case would be to call time.time() at the beginning and the end of each function, and print out the time difference.
+
+This is exactly what decorators do. They allow programmers to change the behavior of a function or class. Here's an example to create a decorator `timeit`.
+
+```python
+def timeit(fn): 
+    # *args and **kwargs are to support positional and named arguments of fn
+    def get_time(*args, **kwargs): 
+        start = time.time() 
+        output = fn(*args, **kwargs)
+        print(f"Time taken in {fn.__name__}: {time.time() - start:.7f}")
+        return output  # make sure that the decorator returns the output of fn
+    return get_time 
+```
+
+Add the decorator `@timeit` to your functions.
+
+```python
+@timeit
+def fib(n):
+    return fib_helper(n)
+
+@timeit
+def fib_m(n):
+    return fib_m_helper(n, {0: 0, 1: 1})
+
+fib(30)
+fib_m(30)
+
+==> Time taken in fib: 0.2787242
+==> Time taken in fib_m: 0.0000138
+```
+
+## 7. Caching with @functools.lru_cache
+Memoization is a form of cache: we cache the previously calculated Fibonacci numbers so that we don't have to calculate them again.
+
+Caching is such an important technique that Python provides a built-in decorator to give your function the caching capacity. If you want `fib_helper` to reuse the previously calculated Fibonacci numbers, you can just add the decorator `lru_cache` from `functools`. `lru` stands for "least recently used". For more information on cache, see [here](https://docs.python.org/3/library/functools.html).
+
+```python
+import functools
+
+@functools.lru_cache()
+def fib_helper(n):
+    if n < 2:
+        return n
+    return fib_helper(n - 1) + fib_helper(n - 2)
+
+@timeit
+def fib(n):
+    """ fib is a wrapper function so that later we can change its behavior
+    at the top level without affecting the behavior at every recursion step.
+    """
+    return fib_helper(n)
+
+fib(50)
+fib_m(50)
+
+==> Time taken in fib: 0.0000412
+==> Time taken in fib_m: 0.0000281
+```
